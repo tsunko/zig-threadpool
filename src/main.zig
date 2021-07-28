@@ -7,14 +7,18 @@ const TestStruct = struct {
     sum: usize = 0,
 
     fn addOne(self: *@This(), num: usize) void {
-        self.sum += num;
+        _ = @atomicRmw(usize, &self.sum, .Add, num, std.builtin.AtomicOrder.SeqCst);
     }
 };
 
+var testFreeVar: usize = 1;
+fn testFreeFunc() void {
+    testFreeVar = 0;
+}
+
 pub fn main() !void {
     // create pool and defer its shutdown
-    var pool = try ThreadPool(TestStruct.addOne, null).init(allocator, 4);
-    defer pool.shutdown();
+    var pool = try ThreadPool(TestStruct.addOne, testFreeFunc).init(allocator, 4);
 
     // create dummy test struct
     var obj: TestStruct = .{};
@@ -27,7 +31,9 @@ pub fn main() !void {
 
     // wait for all tasks to complete
     try pool.awaitTermination();
+    pool.shutdown();
 
+    std.debug.assert(testFreeVar == 0);
     std.debug.assert(obj.sum == 5050);
-    std.debug.print("Test passed.", .{});
+    std.debug.print("Test passed.\n", .{});
 }
