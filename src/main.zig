@@ -1,5 +1,5 @@
 const std = @import("std");
-const ThreadPool = @import("thread-pool.zig").ThreadPool;
+const ThreadPool = @import("lib.zig").ThreadPool;
 
 const allocator = std.testing.allocator;
 
@@ -13,7 +13,7 @@ const TestStruct = struct {
 
 pub fn main() !void {
     // create pool and defer its shutdown
-    var pool = try ThreadPool(TestStruct.addOne).init(allocator, 4);
+    var pool = try ThreadPool(TestStruct.addOne, null).init(allocator, 4);
     defer pool.shutdown();
 
     // create dummy test struct

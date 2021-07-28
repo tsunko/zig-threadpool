@@ -4,9 +4,15 @@ const AtomicQueueCount = @import("atomic-queue-count.zig");
 const Allocator = std.mem.Allocator;
 
 /// A simple thread pool that supports only calling one specific function.
-pub fn ThreadPool(comptime func: anytype) type {
+/// The "free" function does not accept any parameters currently - it's meant more
+/// to free any threadlocal variables, not to call into any structs
+pub fn ThreadPool(comptime func: anytype, comptime free: ?fn () void) type {
     return struct {
         const Self = @This();
+
+        // function to be called when our threads are terminating
+        const FreeFunc: ?fn()void = free;
+
         // derive arg and queue type from func
         const Args = std.meta.ArgsTuple(@TypeOf(func));
         const QueueType = std.atomic.Queue(?Args);
@@ -61,7 +67,12 @@ pub fn ThreadPool(comptime func: anytype) type {
                     // call function and decrement how many tasks are waiting
                     _ = @call(.{}, func, data);
                     self.waiting.dec();
-                } else return;
+                } else {
+                    if(FreeFunc) |freeNow| {
+                        @call(.{}, freeNow, .{});
+                    }
+                    return;
+                }
             }
         }
 
@@ -84,6 +95,11 @@ pub fn ThreadPool(comptime func: anytype) type {
             self.allocator.destroy(self);
         }
 
+        /// Submits the arguments as a new task to the thread pool.
+        pub fn submitTask(self: *Self, args: Args) !void {
+            try self.submitTaskAllowNull(args);
+        }
+
         /// Internal method to submit tasks that allow for a null args value - only used for termination.
         fn submitTaskAllowNull(self: *Self, args: ?Args) !void {
             var node = try self.allocator.create(QueueType.Node);
@@ -92,11 +108,6 @@ pub fn ThreadPool(comptime func: anytype) type {
             self.queue.put(node);
             self.waiting.inc();
             self.queueSema.post();
-        }
-
-        /// Submits the arguments as a new task to the thread pool.
-        pub fn submitTask(self: *Self, args: Args) !void {
-            try self.submitTaskAllowNull(args);
         }
     };
 }
